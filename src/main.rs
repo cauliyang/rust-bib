@@ -1,136 +1,33 @@
-#[deny(warnings)]
-#[allow(unused_imports)]
+// #![deny(warnings)]
 use clap::Parser;
-use fmt::Display;
-use log::{debug, info, warn};
+use log::{info, warn};
 use scraper::{Html, Selector};
-use std::fmt;
-use std::fmt::Formatter;
+use std::path::PathBuf;
+use std::io::BufRead;
+use bibtex::Bibtex;
 
-// @article{RN109,
-// author = {Domscheit, H. and Hegeman, M. A. and Carvalho, N. and Spieth, P. M.},
-// title = {Molecular Dynamics of Lipopolysaccharide-Induced Lung Injury in Rodents},
-// journal = {Front Physiol},
-// volume = {11},
-// pages = {36},
-// ISSN = {1664-042X (Print)
-// 1664-042X (Linking)},
-// DOI = {10.3389/fphys.2020.00036},
-// url = {https://www.ncbi.nlm.nih.gov/pubmed/32116752},
-// year = {2020},
-// type = {Journal Article}
-// }
+
+mod fetch;
+mod bibtex;
+
 
 const BASE_URL: &str = "https://pubmed.ncbi.nlm.nih.gov";
-const META_KEYS: [&str; 11] = [
+
+
+#[allow(unused)]
+const META_KEYS: [&str; 10] = [
     "description",
     "citation_title",
     "citation_authors",
-    "citation_date",
     "citation_journal_title",
-    "citation_pmid",
     "citation_volume",
     "citation_issue",
+    "citation_date",
     "citation_publisher",
     "citation_doi",
-    "citation_isbn",
+    "citation_pmid",
 ];
 
-#[derive(Debug)]
-struct Bibtex {
-    btype: String,
-    title: String,
-    authors: String,
-    year: String,
-    journal: String,
-    volume: String,
-    publisher: Option<String>,
-    doi: Option<String>,
-    isbn: Option<String>,
-    month: Option<String>,
-    pages: Option<String>,
-}
-
-impl Bibtex {
-    #[allow(dead_code)]
-    fn cite_key(&self) -> String {
-        let mut cite_key = String::new();
-        let first_author_last_name = &self.authors.split_whitespace().next().unwrap();
-        cite_key.push_str(first_author_last_name);
-        cite_key.push_str(&self.year.split_whitespace().next().unwrap());
-        cite_key.push_str(&self.title.split_whitespace().next().unwrap());
-        cite_key
-    }
-
-    #[allow(dead_code)]
-    fn new(html: &Html) -> Bibtex {
-        let bibtex = Bibtex {
-            btype: "article".to_string(),
-            title: fetch_citation_key("citation_title", html).unwrap(),
-            authors: fetch_citation_key("citation_authors", html).unwrap(),
-            year: fetch_citation_key("citation_date", html).unwrap(),
-            journal: fetch_citation_key("citation_journal_title", html).unwrap(),
-            volume: fetch_citation_key("citation_volume", html).unwrap(),
-            publisher: fetch_citation_key("citation_publisher", html),
-            doi: fetch_citation_key("citation_doi", html),
-            isbn: fetch_citation_key("citation_issn", html),
-            month: None,
-            pages: None,
-        };
-        bibtex
-    }
-}
-
-// @article{RN109,
-// author = {Domscheit, H. and Hegeman, M. A. and Carvalho, N. and Spieth, P. M.},
-// title = {Molecular Dynamics of Lipopolysaccharide-Induced Lung Injury in Rodents},
-// journal = {Front Physiol},
-// volume = {11},
-// pages = {36},
-// ISSN = {1664-042X (Print)
-// 1664-042X (Linking)},
-// DOI = {10.3389/fphys.2020.00036},
-// url = {https://www.ncbi.nlm.nih.gov/pubmed/32116752},
-// year = {2020},
-// type = {Journal Article}
-// }
-
-impl Display for Bibtex {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        writeln!(f, "@{}{{{},", self.btype, self.cite_key());
-        writeln!(f, "author = {{{}}},", self.authors.replace(";", " and "));
-        writeln!(f, "title = {{{}}},", self.title);
-        writeln!(f, "journal = {{{}}},", self.journal);
-        writeln!(f, "volume = {{{}}},", self.volume);
-
-        if let Some(pages) = &self.pages {
-            writeln!(f, "pages = {{{}}},", pages);
-        }
-
-        if let Some(publisher) = &self.publisher {
-            writeln!(f, "publisher = {{{}}},", publisher);
-        }
-
-        if let Some(doi) = &self.doi {
-            writeln!(f, "doi = {{{}}},", doi);
-        }
-
-        writeln!(f, "year = {{{}}},", self.year);
-        writeln!(f, "}}")
-    }
-}
-
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    /// the title of paper to search
-    #[clap(short, long)]
-    title: String,
-
-    /// the verbose mode
-    #[clap(flatten)]
-    verbose: clap_verbosity_flag::Verbosity,
-}
 
 async fn request(url: &str) -> Result<String, reqwest::Error> {
     let res = reqwest::get(url).await?;
@@ -138,12 +35,21 @@ async fn request(url: &str) -> Result<String, reqwest::Error> {
     Ok(body)
 }
 
+
 fn fetch_paper_url(html: &str) -> String {
     let fragment = Html::parse_document(html);
-    let selector = Selector::parse(r#"a[class="docsum-title"]"#).unwrap();
-    let element = fragment.select(&selector).into_iter().next().unwrap();
 
-    format!("{}{}", BASE_URL, element.value().attr("href").unwrap())
+    let test_selector = Selector::parse(r#"meta[name="ncbi_uid"]"#).unwrap();
+    let test_element = fragment.select(&test_selector).into_iter().next();
+
+    return if test_element.is_none() {
+        let selector = Selector::parse(r#"a[class="docsum-title"]"#).unwrap();
+        let element = fragment.select(&selector).into_iter().next().unwrap();
+        format!("{}{}", BASE_URL, element.value().attr("href").unwrap())
+    } else {
+        let uid = test_element.unwrap().value().attr("content").unwrap();
+        format!("{}/{}/", BASE_URL, uid)
+    }
 }
 
 async fn fetch_paper_info(paper_url: &str) {
@@ -152,20 +58,35 @@ async fn fetch_paper_info(paper_url: &str) {
     info!("paper url: {}", paper_url);
     let body = request(&paper_url).await;
     let fragment = Html::parse_document(body.unwrap().as_str());
+    fetch::fetch_page(&fragment);
     let bibtex = Bibtex::new(&fragment);
     println!("{}", bibtex);
 }
 
-fn fetch_citation_key(key: &str, html: &Html) -> Option<String> {
-    let selector = Selector::parse(&*format!(r#"meta[name="{}"]"#, key)).unwrap();
-    info!("key: {}", key);
-    let element = html.select(&selector).into_iter().next().unwrap();
+pub async fn fetch_bibtex(title: String) -> Result<(), reqwest::Error> {
+    let url = format!("{}/?term={}", BASE_URL, title.split_whitespace().collect::<Vec<_>>().join("+"));
+    info!("search url: {}", url);
+    let body = request(&url).await?;
+    let paper_url = fetch_paper_url(&body);
+    fetch_paper_info(&paper_url).await;
+    Ok(())
+}
 
-    if let Some(res) = element.value().attr("content") {
-        Some(res.to_string())
-    } else {
-        None
-    }
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// the title of paper to search
+    #[clap(short, long)]
+    title: Option<String>,
+
+    // the file of papers to search
+    #[clap(short, long)]
+    file: Option<PathBuf>,
+
+    /// the verbose mode
+    #[clap(flatten)]
+    verbose: clap_verbosity_flag::Verbosity,
 }
 
 // This is using the `tokio` runtime. You'll need the following dependency:
@@ -178,40 +99,24 @@ async fn main() -> Result<(), reqwest::Error> {
     env_logger::Builder::new()
         .filter_level(cli.verbose.log_level_filter())
         .init();
-    let title = cli.title;
 
-    let url = format!("{}/?term={}", BASE_URL, title);
-    let body = request(&url).await?;
+    if let Some(title) = cli.title {
+        fetch_bibtex(title).await?;
+    }
 
-    let paper_url = fetch_paper_url(&body);
+    if let Some(file) = cli.file {
+        let file = std::fs::File::open(file).unwrap();
+        let reader = std::io::BufReader::new(file);
+        for line in reader.lines() {
+            let title = line.unwrap().trim().to_string();
 
-    fetch_paper_info(&paper_url).await;
+            fetch_bibtex(title).await?;
+        }
+    }
 
     Ok(())
 }
 
-// <a
-// class="docsum-title"
-// href="/35918585/"
-// ref="linksrc=docsum_link&amp;article_id=35918585&amp;ordinalpos=1&amp;page=1"
-// data-ga-category="result_click"
-// data-ga-action="1"
-// data-ga-label="35918585"
-// data-full-article-url="from_term=this+is+a+test%5BTitle%5D&amp;from_pos=1"
-// data-article-id="35918585">
-// This is a <b>test</b>: Oculomotor capture when the experiment keeps score.
-// </a>
-
-//
-// @article{ahu61,
-// author={Arrow, Kenneth J. and Leonid Hurwicz and Hirofumi Uzawa},
-// title={Constraint qualifications in maximization problems},
-// journal={Naval Research Logistics Quarterly},
-// volume={8},
-// year=1961,
-// pages={175-191}
-// }
-//
 
 // The [cfg(not(target_arch = "wasm32"))] above prevent building the tokio::main function
 // for wasm32 target, because tokio isn't compatible with wasm32.
