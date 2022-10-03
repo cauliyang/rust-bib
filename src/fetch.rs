@@ -1,5 +1,5 @@
+use log::info;
 use scraper::{Html, Selector};
-use log::{info, warn};
 
 // view-source:https://pubmed.ncbi.nlm.nih.gov/33441414/
 
@@ -11,15 +11,17 @@ pub fn fetch_citation_key(key: &str, html: &Html) -> Option<String> {
 
     element?;
 
-    element.unwrap().value().attr("content").map(|x| x.to_string())
+    element
+        .unwrap()
+        .value()
+        .attr("content")
+        .map(|x| x.to_string())
 }
-
 
 pub fn fetch_title(html: &Html) -> Option<String> {
     let key = "citation_title";
     fetch_citation_key(key, html)
 }
-
 
 pub fn fetch_author(html: &Html) -> Option<String> {
     let key = "citation_authors";
@@ -50,13 +52,26 @@ pub fn fetch_volume(html: &Html) -> Option<String> {
 
 pub fn fetch_publisher(html: &Html) -> Option<String> {
     #[allow(unused)]
-        let key = "citation_publisher";
+    let key = "citation_publisher";
 
     let selector = Selector::parse(r#"p[class="copyright"]"#).unwrap();
 
-    let element = html.select(&selector).into_iter().next().unwrap().text().collect::<Vec<_>>().join(" ");
+    let element = html
+        .select(&selector)
+        .into_iter()
+        .next()
+        .unwrap()
+        .text()
+        .collect::<Vec<_>>()
+        .join(" ");
 
-    let element = element.trim().split("by").last().unwrap().trim().to_string();
+    let element = element
+        .trim()
+        .split("by")
+        .last()
+        .unwrap()
+        .trim()
+        .to_string();
 
     info!("element: {}", element);
 
@@ -73,20 +88,31 @@ pub fn fetch_number(html: &Html) -> Option<String> {
     fetch_citation_key(key, html)
 }
 
-
 fn check_page(page: &str) -> bool {
-    page.contains("-")
+    page.contains('-')
 }
 
 pub fn fetch_page(html: &Html) -> Option<String> {
     // <span class="cit">2021 Mar;31(3):448-460.</span>
     let selector = Selector::parse(r#"span[class="cit"]"#).unwrap();
-    let text = html.select(&selector).into_iter().next().unwrap().text().collect::<Vec<_>>().join("");
+    let text = html
+        .select(&selector)
+        .into_iter()
+        .next()
+        .unwrap()
+        .text()
+        .collect::<Vec<_>>()
+        .join("");
     if text.is_empty() {
         return None;
     }
 
-    let page = text.split(':').last().unwrap().trim_end_matches('.').to_string();
+    let page = text
+        .split(':')
+        .last()
+        .unwrap()
+        .trim_end_matches('.')
+        .to_string();
     info!("page: {}", page);
 
     if check_page(&page) {
@@ -95,4 +121,3 @@ pub fn fetch_page(html: &Html) -> Option<String> {
         None
     }
 }
-

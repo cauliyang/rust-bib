@@ -1,7 +1,7 @@
-use std::fmt::{Display, Formatter};
-use std::fmt;
-use scraper::Html;
 use crate::fetch;
+use scraper::Html;
+use std::fmt;
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub struct Bibtex {
@@ -60,15 +60,23 @@ impl Display for Bibtex {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "@{}{{{},", self.btype, self.cite_key())?;
         writeln!(f, "  title = {{{}}},", self.title)?;
-        writeln!(f, "  author = {{{}}},", self.author.replace(";", " and "))?;
+        writeln!(f, "  author = {{{}}},", self.author.replace(';', " and "))?;
         writeln!(f, "  journal = {{{}}},", self.journal)?;
 
-        self.volume.as_ref().map(|v| writeln!(f, "  volume = {{{}}},", v));
-        self.number.as_ref().map(|n| writeln!(f, "  number = {{{}}},", n));
-        self.pages.as_ref().map(|p| writeln!(f, "  pages = {{{}}},", p));
+        self.volume
+            .as_ref()
+            .map(|v| writeln!(f, "  volume = {{{}}},", v));
+        self.number
+            .as_ref()
+            .map(|n| writeln!(f, "  number = {{{}}},", n));
+        self.pages
+            .as_ref()
+            .map(|p| writeln!(f, "  pages = {{{}}},", p));
         writeln!(f, "  year = {{{}}},", self.year)?;
 
-        self.publisher.as_ref().map(|p| writeln!(f, "  publisher = {{{}}},", p));
+        self.publisher
+            .as_ref()
+            .map(|p| writeln!(f, "  publisher = {{{}}},", p));
 
         if let Some(doi) = &self.doi {
             writeln!(f, "  doi = {{{}}},", doi)?;
